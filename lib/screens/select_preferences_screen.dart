@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/category_card.dart';
+import '../providers/profile_provider.dart';
 
 class SelectPreferencesScreen extends StatefulWidget {
   const SelectPreferencesScreen({super.key});
@@ -14,33 +16,79 @@ class SelectPreferencesScreen extends StatefulWidget {
 
 class _SelectPreferencesScreenState extends State<SelectPreferencesScreen> {
   final Set<String> selectedCategories = {};
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load existing preferences
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final profileProvider = Provider.of<ProfileProvider>(
+        context,
+        listen: false,
+      );
+      final selectedProfile = profileProvider.selectedProfile;
+      if (selectedProfile != null && selectedProfile.preferences.isNotEmpty) {
+        setState(() {
+          selectedCategories.addAll(selectedProfile.preferences);
+        });
+      }
+    });
+  }
+
+  Future<void> _savePreferences() async {
+    setState(() => _isLoading = true);
+
+    final profileProvider = Provider.of<ProfileProvider>(
+      context,
+      listen: false,
+    );
+    final selectedProfile = profileProvider.selectedProfile;
+
+    if (selectedProfile != null) {
+      final success = await profileProvider.updateProfile(
+        profileId: selectedProfile.id,
+        name: selectedProfile.name,
+        age: selectedProfile.age,
+        preferences: selectedCategories.toList(),
+      );
+
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+
+      if (success) {
+        Navigator.pushReplacementNamed(context, '/custom-rules');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              profileProvider.errorMessage ?? 'Failed to save preferences',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } else {
+      setState(() => _isLoading = false);
+      Navigator.pushReplacementNamed(context, '/custom-rules');
+    }
+  }
 
   final List<Map<String, dynamic>> categories = [
-    {
-      'title': 'Art &\nCrafts',
-      'icon': Icons.brush,
-      'color': AppColors.pink,
-    },
+    {'title': 'Art &\nCrafts', 'icon': Icons.brush, 'color': AppColors.pink},
     {
       'title': 'Learning',
       'icon': Icons.menu_book,
       'color': AppColors.veryLightBlue,
     },
-    {
-      'title': 'Puzzles',
-      'icon': Icons.extension,
-      'color': AppColors.yellow,
-    },
+    {'title': 'Puzzles', 'icon': Icons.extension, 'color': AppColors.yellow},
     {
       'title': 'Urdu\nPoems',
       'icon': Icons.music_note,
       'color': AppColors.lightPurple,
     },
-    {
-      'title': 'Science &\nNature',
-      'icon': Icons.eco,
-      'color': AppColors.green,
-    },
+    {'title': 'Science &\nNature', 'icon': Icons.eco, 'color': AppColors.green},
     {
       'title': 'Sports',
       'icon': Icons.sports_basketball,
@@ -56,11 +104,7 @@ class _SelectPreferencesScreenState extends State<SelectPreferencesScreen> {
       'icon': Icons.directions_run,
       'color': AppColors.cyan,
     },
-    {
-      'title': 'Cooking\nFun',
-      'icon': Icons.restaurant,
-      'color': AppColors.red,
-    },
+    {'title': 'Cooking\nFun', 'icon': Icons.restaurant, 'color': AppColors.red},
   ];
 
   @override
@@ -92,6 +136,7 @@ class _SelectPreferencesScreenState extends State<SelectPreferencesScreen> {
               // Categories Grid
               Expanded(
                 child: GridView.builder(
+                  physics: const BouncingScrollPhysics(),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
                     crossAxisSpacing: 16,
@@ -101,8 +146,9 @@ class _SelectPreferencesScreenState extends State<SelectPreferencesScreen> {
                   itemCount: categories.length,
                   itemBuilder: (context, index) {
                     final category = categories[index];
-                    final isSelected =
-                        selectedCategories.contains(category['title']);
+                    final isSelected = selectedCategories.contains(
+                      category['title'],
+                    );
                     return CategoryCard(
                       title: category['title'],
                       icon: category['icon'],
@@ -123,12 +169,9 @@ class _SelectPreferencesScreenState extends State<SelectPreferencesScreen> {
               ),
               const SizedBox(height: 20),
               // Continue Button
-              CustomButton(
-                text: 'Continue',
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/custom-rules');
-                },
-              ),
+              _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : CustomButton(text: 'Continue', onPressed: _savePreferences),
             ],
           ),
         ),
