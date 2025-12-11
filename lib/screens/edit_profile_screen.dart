@@ -17,6 +17,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _ageController = TextEditingController();
+  DateTime? _selectedBirthdate;
   bool _isLoading = false;
 
   @override
@@ -32,6 +33,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (selectedProfile != null) {
         _nameController.text = selectedProfile.name;
         _ageController.text = selectedProfile.age.toString();
+        _selectedBirthdate = selectedProfile.birthdate;
       }
     });
   }
@@ -43,8 +45,66 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
+  int _calculateAge(DateTime birthdate) {
+    final today = DateTime.now();
+    int age = today.year - birthdate.year;
+    if (today.month < birthdate.month ||
+        (today.month == birthdate.month && today.day < birthdate.day)) {
+      age--;
+    }
+    return age;
+  }
+
+  Future<void> _selectBirthdate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate:
+          _selectedBirthdate ??
+          DateTime.now().subtract(const Duration(days: 365 * 5)),
+      firstDate: DateTime.now().subtract(const Duration(days: 365 * 18)),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: AppColors.white,
+              surface: AppColors.white,
+              onSurface: AppColors.textDark,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedBirthdate = picked;
+        // Auto-calculate and populate age
+        final calculatedAge = _calculateAge(picked);
+        _ageController.text = calculatedAge.toString();
+      });
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}/${date.year}';
+  }
+
   Future<void> _saveChanges() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Validate birthdate is selected
+    if (_selectedBirthdate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a birthdate'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     final age = int.tryParse(_ageController.text);
     if (age == null || age < 1 || age > 18) {
@@ -52,6 +112,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         const SnackBar(
           content: Text('Please enter a valid age between 1 and 18'),
           backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Validate age matches birthdate
+    final calculatedAge = _calculateAge(_selectedBirthdate!);
+    if (age != calculatedAge) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Age ($age) does not match birthdate (calculated age: $calculatedAge)',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
       return;
@@ -70,6 +145,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         profileId: selectedProfile.id,
         name: _nameController.text.trim(),
         age: age,
+        birthdate: _selectedBirthdate,
       );
 
       if (!mounted) return;
@@ -165,9 +241,53 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       controller: _nameController,
                     ),
                     const SizedBox(height: 16),
-                    // Age Field
+                    // Birthdate Field (Date Picker)
+                    GestureDetector(
+                      onTap: _selectBirthdate,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 18,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withOpacity(0.1),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              color: AppColors.primary,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                _selectedBirthdate == null
+                                    ? 'Select Birthdate *'
+                                    : _formatDate(_selectedBirthdate!),
+                                style: AppTextStyles.bodyMedium.copyWith(
+                                  color: _selectedBirthdate == null
+                                      ? AppColors.textGray
+                                      : AppColors.textDark,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Age Field (Auto-populated, but editable for verification)
                     CustomTextField(
-                      hintText: 'Age',
+                      hintText: 'Age (will auto-fill from birthdate)',
                       controller: _ageController,
                       keyboardType: TextInputType.number,
                     ),

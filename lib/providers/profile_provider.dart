@@ -35,6 +35,7 @@ class ProfileProvider extends ChangeNotifier {
   Future<bool> createProfile({
     required String name,
     required int age,
+    DateTime? birthdate,
     List<String> preferences = const [],
   }) async {
     try {
@@ -45,10 +46,13 @@ class ProfileProvider extends ChangeNotifier {
       final newProfile = await _profileService.createChildProfile(
         name: name,
         age: age,
+        birthdate: birthdate,
         preferences: preferences,
       );
 
       _profiles.add(newProfile);
+      // Automatically select the newly created profile
+      _selectedProfile = newProfile;
       _isLoading = false;
       notifyListeners();
       return true;
@@ -64,6 +68,7 @@ class ProfileProvider extends ChangeNotifier {
     required String profileId,
     String? name,
     int? age,
+    DateTime? birthdate,
     List<String>? preferences,
     List<String>? customRules,
   }) async {
@@ -76,6 +81,7 @@ class ProfileProvider extends ChangeNotifier {
         profileId: profileId,
         name: name,
         age: age,
+        birthdate: birthdate,
         preferences: preferences,
         customRules: customRules,
       );

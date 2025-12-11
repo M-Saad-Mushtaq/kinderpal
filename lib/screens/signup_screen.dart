@@ -46,8 +46,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() => _isLoading = false);
 
     if (success) {
-      // Navigate to email verification screen
-      Navigator.pushReplacementNamed(context, '/email-verification');
+      // Navigate to YouTube API setup screen (email verification disabled)
+      // Original: Navigator.pushReplacementNamed(context, '/email-verification');
+      Navigator.pushReplacementNamed(context, '/youtube-api-setup');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

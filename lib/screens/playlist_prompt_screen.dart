@@ -21,9 +21,12 @@ class _PlaylistPromptScreenState extends State<PlaylistPromptScreen> {
 
   void _onNavTap(int index) {
     if (index == 0) {
-      Navigator.of(context).pushReplacementNamed('/home');
+      // Pop back to home screen
+      Navigator.of(
+        context,
+      ).popUntil((route) => route.settings.name == '/home' || route.isFirst);
     } else if (index == 2) {
-      Navigator.of(context).pushReplacementNamed('/profile');
+      Navigator.of(context).pushNamed('/profile');
     } else {
       setState(() {
         _currentIndex = index;

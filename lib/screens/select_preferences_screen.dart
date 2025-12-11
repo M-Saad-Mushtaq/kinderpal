@@ -22,11 +22,23 @@ class _SelectPreferencesScreenState extends State<SelectPreferencesScreen> {
   void initState() {
     super.initState();
     // Load existing preferences
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final profileProvider = Provider.of<ProfileProvider>(
         context,
         listen: false,
       );
+
+      // If no profile is selected, try to load profiles first
+      if (profileProvider.selectedProfile == null &&
+          !profileProvider.isLoading) {
+        await profileProvider.loadProfiles();
+        // If still no profile after loading, select the first one
+        if (profileProvider.profiles.isNotEmpty &&
+            profileProvider.selectedProfile == null) {
+          profileProvider.selectProfile(profileProvider.profiles.first);
+        }
+      }
+
       final selectedProfile = profileProvider.selectedProfile;
       if (selectedProfile != null && selectedProfile.preferences.isNotEmpty) {
         setState(() {

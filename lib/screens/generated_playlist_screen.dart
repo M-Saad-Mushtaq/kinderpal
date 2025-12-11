@@ -128,8 +128,8 @@ class _GeneratedPlaylistScreenState extends State<GeneratedPlaylistScreen> {
 
   Widget _buildVideoCard(YouTubeVideo video) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => VideoPlayerScreen(video: video),

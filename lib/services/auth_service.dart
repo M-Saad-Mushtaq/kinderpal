@@ -54,9 +54,7 @@ class AuthService {
   // Sign in with Google
   Future<bool> signInWithGoogle() async {
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        serverClientId: 'YOUR_WEB_CLIENT_ID', // You'll need to add this
-      );
+      final GoogleSignIn googleSignIn = GoogleSignIn(scopes: ['email']);
 
       final googleUser = await googleSignIn.signIn();
       if (googleUser == null) return false;

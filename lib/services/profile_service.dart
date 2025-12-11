@@ -28,6 +28,7 @@ class ProfileService {
   Future<ChildProfile> createChildProfile({
     required String name,
     required int age,
+    DateTime? birthdate,
     List<String> preferences = const [],
   }) async {
     try {
@@ -40,6 +41,9 @@ class ProfileService {
             'guardian_id': userId,
             'name': name,
             'age': age,
+            'birthdate': birthdate?.toIso8601String().split(
+              'T',
+            )[0], // Store date only
             'preferences': preferences,
           })
           .select()
@@ -56,6 +60,7 @@ class ProfileService {
     required String profileId,
     String? name,
     int? age,
+    DateTime? birthdate,
     List<String>? preferences,
     List<String>? customRules,
   }) async {
@@ -63,6 +68,11 @@ class ProfileService {
       final updates = <String, dynamic>{};
       if (name != null) updates['name'] = name;
       if (age != null) updates['age'] = age;
+      if (birthdate != null) {
+        updates['birthdate'] = birthdate.toIso8601String().split(
+          'T',
+        )[0]; // Store date only
+      }
       if (preferences != null) updates['preferences'] = preferences;
       if (customRules != null) updates['custom_rules'] = customRules;
 

@@ -23,7 +23,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
 
     if (index == 0) {
-      Navigator.pushReplacementNamed(context, '/home');
+      Navigator.pop(context);
     } else if (index == 1) {
       Navigator.pushNamed(context, '/playlist-prompt');
     }

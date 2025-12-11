@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/youtube_video.dart';
+import 'custom_rules_service.dart';
 
 class YouTubeService {
   static const String _apiKey = 'AIzaSyCXxSdotaK9WTpWJc9QPnyh77MBcVw6TL4';
@@ -123,6 +124,7 @@ class YouTubeService {
     required List<String> preferences,
     int? childAge,
     int maxResults = 30,
+    String? childProfileId, // Add profile ID to apply rules
   }) async {
     try {
       List<YouTubeVideo> allVideos = [];
@@ -151,9 +153,62 @@ class YouTubeService {
         uniqueVideos[video.id] = video;
       }
 
-      return uniqueVideos.values.toList()..shuffle();
+      List<YouTubeVideo> filteredVideos = uniqueVideos.values.toList();
+
+      // Apply custom rules filtering
+      if (childProfileId != null) {
+        filteredVideos = await _applyCustomRules(
+          filteredVideos,
+          childProfileId,
+        );
+      }
+
+      return filteredVideos..shuffle();
     } catch (e) {
       throw Exception('Error loading home feed: $e');
+    }
+  }
+
+  /// Apply custom rules to filter videos
+  Future<List<YouTubeVideo>> _applyCustomRules(
+    List<YouTubeVideo> videos,
+    String childProfileId,
+  ) async {
+    try {
+      final customRulesService = CustomRulesService();
+
+      // Get blocked channels and categories
+      final blockedChannels = await customRulesService.getBlockedChannels(
+        childProfileId,
+      );
+      final blockedCategories = await customRulesService.getBlockedCategories(
+        childProfileId,
+      );
+
+      // Filter out blocked videos
+      return videos.where((video) {
+        // Check if channel is blocked
+        if (blockedChannels.contains(video.channelTitle.toLowerCase())) {
+          print('🚫 Blocked channel: ${video.channelTitle}');
+          return false;
+        }
+
+        // Check if title/description contains blocked keywords
+        final titleLower = video.title.toLowerCase();
+        final descLower = video.description.toLowerCase();
+
+        for (final category in blockedCategories) {
+          if (titleLower.contains(category) || descLower.contains(category)) {
+            print('🚫 Blocked category "$category": ${video.title}');
+            return false;
+          }
+        }
+
+        return true;
+      }).toList();
+    } catch (e) {
+      print('Error applying custom rules: $e');
+      return videos; // Return unfiltered on error
     }
   }
 

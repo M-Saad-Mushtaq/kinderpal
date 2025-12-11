@@ -3,6 +3,7 @@ class ChildProfile {
   final String guardianId;
   final String name;
   final int age;
+  final DateTime? birthdate;
   final String? avatarUrl;
   final List<String> preferences;
   final List<String> customRules;
@@ -13,6 +14,7 @@ class ChildProfile {
     required this.guardianId,
     required this.name,
     required this.age,
+    this.birthdate,
     this.avatarUrl,
     this.preferences = const [],
     this.customRules = const [],
@@ -25,6 +27,9 @@ class ChildProfile {
       guardianId: json['guardian_id'] as String,
       name: json['name'] as String,
       age: json['age'] as int,
+      birthdate: json['birthdate'] != null
+          ? DateTime.parse(json['birthdate'] as String)
+          : null,
       avatarUrl: json['avatar_url'] as String?,
       preferences:
           (json['preferences'] as List<dynamic>?)
@@ -46,6 +51,9 @@ class ChildProfile {
       'guardian_id': guardianId,
       'name': name,
       'age': age,
+      'birthdate': birthdate?.toIso8601String().split(
+        'T',
+      )[0], // Store as date only
       'avatar_url': avatarUrl,
       'preferences': preferences,
       'custom_rules': customRules,

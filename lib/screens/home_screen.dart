@@ -17,13 +17,17 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with AutomaticKeepAliveClientMixin {
   int _currentIndex = 0;
   final YouTubeService _youtubeService = YouTubeService();
   final TextEditingController _searchController = TextEditingController();
   List<YouTubeVideo> _videos = [];
   bool _isLoading = true;
   bool _isSearching = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -52,16 +56,12 @@ class _HomeScreenState extends State<HomeScreen> {
           preferences: selectedProfile.preferences,
           childAge: selectedProfile.age,
           maxResults: 30,
-        );
-
-        // Apply custom rules filtering
-        final filteredVideos = _youtubeService.filterVideosByRules(
-          videos: videos,
-          customRules: selectedProfile.customRules,
+          childProfileId:
+              selectedProfile.id, // Pass profile ID for rule enforcement
         );
 
         setState(() {
-          _videos = filteredVideos;
+          _videos = videos; // Videos already filtered by custom rules
           _isLoading = false;
         });
       }
@@ -122,9 +122,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onNavTap(int index) {
     if (index == 1) {
-      Navigator.of(context).pushReplacementNamed('/playlist-prompt');
+      Navigator.of(context).pushNamed('/playlist-prompt');
     } else if (index == 2) {
-      Navigator.of(context).pushReplacementNamed('/profile');
+      Navigator.of(context).pushNamed('/profile');
     } else {
       setState(() {
         _currentIndex = index;
@@ -134,6 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required by AutomaticKeepAliveClientMixin
     return Consumer<ProfileProvider>(
       builder: (context, profileProvider, child) {
         final selectedProfile = profileProvider.selectedProfile;
@@ -324,8 +325,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildVideoCard(YouTubeVideo video) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => VideoPlayerScreen(video: video),

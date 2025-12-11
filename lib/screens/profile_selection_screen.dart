@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import './create_profile_screen.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
 import '../providers/profile_provider.dart';
@@ -189,7 +190,13 @@ class _ProfileSelectionScreenState extends State<ProfileSelectionScreen> {
   Widget _buildAddProfileCard(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        Navigator.pushNamed(context, '/create-profile');
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                const CreateProfileScreen(isFromProfileTab: true),
+          ),
+        );
       },
       child: GlassContainer(
         borderRadius: 20,

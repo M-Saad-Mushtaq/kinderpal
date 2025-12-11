@@ -4,7 +4,7 @@ import '../constants/app_text_styles.dart';
 
 class CustomButton extends StatefulWidget {
   final String text;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final Color? backgroundColor;
   final Color? textColor;
   final double? width;
@@ -55,12 +55,16 @@ class _CustomButtonState extends State<CustomButton>
   }
 
   void _handleTapDown(TapDownDetails details) {
-    _controller.forward();
+    if (widget.onPressed != null) {
+      _controller.forward();
+    }
   }
 
   void _handleTapUp(TapUpDetails details) {
-    _controller.reverse();
-    widget.onPressed();
+    if (widget.onPressed != null) {
+      _controller.reverse();
+      widget.onPressed!();
+    }
   }
 
   void _handleTapCancel() {
@@ -69,46 +73,49 @@ class _CustomButtonState extends State<CustomButton>
 
   @override
   Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: _scaleAnimation,
-      child: GestureDetector(
-        onTapDown: _handleTapDown,
-        onTapUp: _handleTapUp,
-        onTapCancel: _handleTapCancel,
-        child: Container(
-          width: widget.width ?? double.infinity,
-          height: widget.height,
-          decoration: !widget.isOutlined && widget.useGradient
-              ? BoxDecoration(
-                  gradient: widget.backgroundColor == null
-                      ? AppColors.primaryGradient
-                      : LinearGradient(
-                          colors: [
-                            widget.backgroundColor!,
-                            widget.backgroundColor!,
-                          ],
-                        ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: (widget.backgroundColor ?? AppColors.primary)
-                          .withOpacity(0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                )
-              : BoxDecoration(
-                  color: widget.backgroundColor ?? AppColors.primary,
-                  borderRadius: BorderRadius.circular(16),
-                  border: widget.isOutlined
-                      ? Border.all(
-                          color: widget.backgroundColor ?? AppColors.primary,
-                          width: 2,
-                        )
-                      : null,
-                ),
-          child: Center(child: _buildContent()),
+    return Opacity(
+      opacity: widget.onPressed == null ? 0.5 : 1.0,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: GestureDetector(
+          onTapDown: _handleTapDown,
+          onTapUp: _handleTapUp,
+          onTapCancel: _handleTapCancel,
+          child: Container(
+            width: widget.width ?? double.infinity,
+            height: widget.height,
+            decoration: !widget.isOutlined && widget.useGradient
+                ? BoxDecoration(
+                    gradient: widget.backgroundColor == null
+                        ? AppColors.primaryGradient
+                        : LinearGradient(
+                            colors: [
+                              widget.backgroundColor!,
+                              widget.backgroundColor!,
+                            ],
+                          ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (widget.backgroundColor ?? AppColors.primary)
+                            .withOpacity(0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  )
+                : BoxDecoration(
+                    color: widget.backgroundColor ?? AppColors.primary,
+                    borderRadius: BorderRadius.circular(16),
+                    border: widget.isOutlined
+                        ? Border.all(
+                            color: widget.backgroundColor ?? AppColors.primary,
+                            width: 2,
+                          )
+                        : null,
+                  ),
+            child: Center(child: _buildContent()),
+          ),
         ),
       ),
     );

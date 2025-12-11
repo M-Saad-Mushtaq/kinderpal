@@ -7,6 +7,7 @@ import '../constants/app_text_styles.dart';
 import '../models/youtube_video.dart';
 import '../providers/profile_provider.dart';
 import '../services/viewing_history_service.dart';
+import '../services/custom_rules_service.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
   final YouTubeVideo video;
@@ -20,12 +21,15 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late YoutubePlayerController _controller;
   final ViewingHistoryService _historyService = ViewingHistoryService();
+  final CustomRulesService _customRulesService = CustomRulesService();
   int _watchDuration = 0;
   bool _isFullScreen = false;
 
   @override
   void initState() {
     super.initState();
+    _checkTimeConstraints(); // Check before allowing playback
+
     _controller = YoutubePlayerController(
       initialVideoId: widget.video.id,
       flags: const YoutubePlayerFlags(
@@ -36,22 +40,109 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
     );
 
-    // Track watch duration
+    // Track watch duration and save continuously
     _controller.addListener(_trackWatchDuration);
+  }
+
+  /// Check if video playback is allowed based on time constraints
+  Future<void> _checkTimeConstraints() async {
+    final profileProvider = Provider.of<ProfileProvider>(
+      context,
+      listen: false,
+    );
+    final selectedProfile = profileProvider.selectedProfile;
+
+    if (selectedProfile != null) {
+      // Get today's total screen time in minutes
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final todayScreenTime = await _historyService.getTotalScreenTime(
+        childProfileId: selectedProfile.id,
+        startDate: startOfDay,
+        endDate: now,
+      );
+      final screenTimeMinutes = (todayScreenTime / 60).round();
+
+      // Check if playback is allowed
+      final canPlay = await _customRulesService.canPlayVideo(
+        childProfileId: selectedProfile.id,
+        currentScreenTime: screenTimeMinutes,
+      );
+
+      if (!canPlay && mounted) {
+        // Show dialog and close player
+        Navigator.pop(context);
+        Future.microtask(() {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('⏰ Screen Time Limit Reached'),
+              content: Text(
+                'You\'ve reached your daily screen time limit of $screenTimeMinutes minutes.\n\nTake a break and come back later!',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        });
+      }
+    }
   }
 
   void _trackWatchDuration() {
     if (_controller.value.isPlaying) {
-      setState(() {
-        _watchDuration = _controller.value.position.inSeconds;
-      });
+      final currentSeconds = _controller.value.position.inSeconds;
+
+      // Only update if seconds changed
+      if (currentSeconds != _watchDuration) {
+        _watchDuration = currentSeconds;
+
+        // Save to database every second
+        _saveWatchProgress();
+      }
+    }
+  }
+
+  void _saveWatchProgress() {
+    final profileProvider = Provider.of<ProfileProvider>(
+      context,
+      listen: false,
+    );
+    final selectedProfile = profileProvider.selectedProfile;
+
+    if (selectedProfile != null && _watchDuration > 0) {
+      // Fire and forget - don't await to avoid blocking playback
+      _historyService
+          .upsertViewingHistory(
+            childProfileId: selectedProfile.id,
+            videoId: widget.video.id,
+            videoTitle: widget.video.title,
+            durationWatched: _watchDuration,
+          )
+          .catchError((e) {
+            debugPrint('Error saving watch progress: $e');
+          });
     }
   }
 
   @override
   void dispose() {
-    // Save viewing history before disposing
-    _saveViewingHistory();
+    // Get final watch position before disposing controller
+    if (_controller.value.isReady) {
+      final finalPosition = _controller.value.position.inSeconds;
+      if (finalPosition > _watchDuration) {
+        _watchDuration = finalPosition;
+        // Save final position one last time
+        _saveWatchProgress();
+      }
+    }
+
+    debugPrint('DISPOSE: Final watch duration = $_watchDuration seconds');
+
     _controller.dispose();
 
     // Reset orientation
@@ -61,27 +152,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     ]);
 
     super.dispose();
-  }
-
-  Future<void> _saveViewingHistory() async {
-    final profileProvider = Provider.of<ProfileProvider>(
-      context,
-      listen: false,
-    );
-    final selectedProfile = profileProvider.selectedProfile;
-
-    if (selectedProfile != null && _watchDuration > 0) {
-      try {
-        await _historyService.addViewingHistory(
-          childProfileId: selectedProfile.id,
-          videoId: widget.video.id,
-          videoTitle: widget.video.title,
-          durationWatched: _watchDuration,
-        );
-      } catch (e) {
-        debugPrint('Error saving viewing history: $e');
-      }
-    }
   }
 
   void _toggleFullScreen() {

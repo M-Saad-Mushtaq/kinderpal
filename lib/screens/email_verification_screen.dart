@@ -30,8 +30,8 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     setState(() => _isChecking = false);
 
     if (isVerified) {
-      // Email is verified, navigate to create profile
-      Navigator.pushReplacementNamed(context, '/create-profile');
+      // Email is verified, navigate to YouTube API setup
+      Navigator.pushReplacementNamed(context, '/youtube-api-setup');
     } else {
       // Show message that email is not verified yet
       ScaffoldMessenger.of(context).showSnackBar(
