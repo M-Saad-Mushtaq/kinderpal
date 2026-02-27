@@ -324,7 +324,7 @@ class _CustomRulesScreenState extends State<CustomRulesScreen> {
                         ),
                       ),
                     );
-                  }).toList(),
+                  }),
                   const SizedBox(height: 20),
                   // Input Field
                   Container(

@@ -9,6 +9,9 @@ import '../providers/profile_provider.dart';
 import '../services/youtube_service.dart';
 import '../models/youtube_video.dart';
 import 'video_player_screen.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -41,6 +44,32 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
+
+  Future<void> _classifyVideo(YouTubeVideo video) async {
+    try {
+      // Download thumbnail and convert to base64
+      final imageResponse = await http.get(Uri.parse(video.thumbnailUrl));
+      final base64Image = base64Encode(imageResponse.bodyBytes);
+
+      // Call your Python API
+      final response = await http.post(
+        Uri.parse('http://10.0.2.2:5000/classify'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'title': video.title,
+          'thumbnail_base64': base64Image,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('🎯 Predicted Class: ${data['predicted_class']} title:${video.title}');
+      }
+    } catch (e) {
+      print('Classification error: $e');
+    }
+  }
+
   Future<void> _loadVideos() async {
     setState(() => _isLoading = true);
 
@@ -60,10 +89,15 @@ class _HomeScreenState extends State<HomeScreen>
               selectedProfile.id, // Pass profile ID for rule enforcement
         );
 
+
         setState(() {
           _videos = videos; // Videos already filtered by custom rules
           _isLoading = false;
         });
+
+        for (var video in videos) {
+          _classifyVideo(video); // prints class to console
+        }
       }
     } catch (e) {
       setState(() => _isLoading = false);
