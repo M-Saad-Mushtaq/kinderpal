@@ -124,7 +124,8 @@ class YouTubeService {
     required List<String> preferences,
     int? childAge,
     int maxResults = 30,
-    String? childProfileId, // Add profile ID to apply rules
+    String? childProfileId,
+    List<String> customRules = const [], // legacy text-rule array from child_profiles
   }) async {
     try {
       List<YouTubeVideo> allVideos = [];
@@ -155,11 +156,12 @@ class YouTubeService {
 
       List<YouTubeVideo> filteredVideos = uniqueVideos.values.toList();
 
-      // Apply custom rules filtering
+      // Apply all parental rules (structured + legacy text array)
       if (childProfileId != null) {
-        filteredVideos = await _applyCustomRules(
-          filteredVideos,
-          childProfileId,
+        filteredVideos = await applyAllRules(
+          videos: filteredVideos,
+          childProfileId: childProfileId,
+          legacyCustomRules: customRules,
         );
       }
 
@@ -169,46 +171,81 @@ class YouTubeService {
     }
   }
 
-  /// Apply custom rules to filter videos
-  Future<List<YouTubeVideo>> _applyCustomRules(
-    List<YouTubeVideo> videos,
-    String childProfileId,
-  ) async {
+  /// Apply all active parental rules to a video list:
+  ///  1. Block by channel name (structured — substring match).
+  ///  2. Block by category keyword in title / description / channel (structured).
+  ///  3. Allowed-only filter: if guardian set an allow-list, video must
+  ///     match at least one allowed keyword (structured).
+  ///  4. Legacy custom_rules text-array keyword filter.
+  Future<List<YouTubeVideo>> applyAllRules({
+    required List<YouTubeVideo> videos,
+    required String childProfileId,
+    List<String> legacyCustomRules = const [],
+  }) async {
     try {
-      final customRulesService = CustomRulesService();
+      final ruleData =
+          await CustomRulesService().getActiveRuleData(childProfileId);
 
-      // Get blocked channels and categories
-      final blockedChannels = await customRulesService.getBlockedChannels(
-        childProfileId,
-      );
-      final blockedCategories = await customRulesService.getBlockedCategories(
-        childProfileId,
-      );
-
-      // Filter out blocked videos
       return videos.where((video) {
-        // Check if channel is blocked
-        if (blockedChannels.contains(video.channelTitle.toLowerCase())) {
-          print('🚫 Blocked channel: ${video.channelTitle}');
-          return false;
+        final titleLower   = video.title.toLowerCase();
+        final descLower    = video.description.toLowerCase();
+        final channelLower = video.channelTitle.toLowerCase();
+
+        // 1. Block by channel (substring so "Cocomelon" blocks
+        //    "Cocomelon - Nursery Rhymes")
+        for (final ch in ruleData.blockedChannels) {
+          if (channelLower.contains(ch)) {
+            print('🚫 Blocked channel "$ch": ${video.channelTitle}');
+            return false;
+          }
         }
 
-        // Check if title/description contains blocked keywords
-        final titleLower = video.title.toLowerCase();
-        final descLower = video.description.toLowerCase();
-
-        for (final category in blockedCategories) {
-          if (titleLower.contains(category) || descLower.contains(category)) {
-            print('🚫 Blocked category "$category": ${video.title}');
+        // 2. Block by category keyword
+        for (final cat in ruleData.blockedCategories) {
+          if (titleLower.contains(cat) ||
+              descLower.contains(cat) ||
+              channelLower.contains(cat)) {
+            print('🚫 Blocked category "$cat": ${video.title}');
             return false;
+          }
+        }
+
+        // 3. Allowed-only whitelist filter
+        if (ruleData.hasAllowedFilter) {
+          final allowed = ruleData.allowedCategories.any(
+            (cat) =>
+                titleLower.contains(cat) ||
+                descLower.contains(cat) ||
+                channelLower.contains(cat),
+          );
+          if (!allowed) {
+            print('🚫 Not in allowed categories: ${video.title}');
+            return false;
+          }
+        }
+
+        // 4. Legacy text-rule keyword filter
+        for (final rule in legacyCustomRules) {
+          final keywords = rule
+              .toLowerCase()
+              .split(' ')
+              .where((w) => w.length > 3)
+              .toList();
+          for (final kw in keywords) {
+            if (titleLower.contains(kw) ||
+                descLower.contains(kw) ||
+                channelLower.contains(kw)) {
+              print('🚫 Legacy rule "$rule" blocked: ${video.title}');
+              return false;
+            }
           }
         }
 
         return true;
       }).toList();
     } catch (e) {
-      print('Error applying custom rules: $e');
-      return videos; // Return unfiltered on error
+      print('Error applying rules: $e');
+      return videos;
     }
   }
 
@@ -277,48 +314,5 @@ class YouTubeService {
     }
   }
 
-  // Filter videos based on custom rules
-  List<YouTubeVideo> filterVideosByRules({
-    required List<YouTubeVideo> videos,
-    required List<String> customRules,
-  }) {
-    if (customRules.isEmpty) return videos;
-
-    return videos.where((video) {
-      final lowerTitle = video.title.toLowerCase();
-      final lowerDescription = video.description.toLowerCase();
-      final lowerChannel = video.channelTitle.toLowerCase();
-
-      for (String rule in customRules) {
-        final lowerRule = rule.toLowerCase();
-
-        // Check if rule contains blocked keywords
-        if (lowerRule.contains('no toys') &&
-            (lowerTitle.contains('toy') || lowerDescription.contains('toy'))) {
-          return false;
-        }
-
-        if (lowerRule.contains('no vlogs') &&
-            (lowerTitle.contains('vlog') ||
-                lowerDescription.contains('vlog'))) {
-          return false;
-        }
-
-        // Add more rule patterns as needed
-        final keywords = lowerRule
-            .split(' ')
-            .where((w) => w.length > 2)
-            .toList();
-        for (String keyword in keywords) {
-          if (lowerTitle.contains(keyword) ||
-              lowerDescription.contains(keyword) ||
-              lowerChannel.contains(keyword)) {
-            return false;
-          }
-        }
-      }
-
-      return true;
-    }).toList();
-  }
 }
+

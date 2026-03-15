@@ -58,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen>
           maxResults: 30,
           childProfileId:
               selectedProfile.id, // Pass profile ID for rule enforcement
+          customRules: selectedProfile.customRules, // legacy text-rule sync
         );
 
         setState(() {
@@ -98,11 +99,12 @@ class _HomeScreenState extends State<HomeScreen>
         maxResults: 20,
       );
 
-      // Apply custom rules filtering
+      // Apply all rules (structured AI-parsed + legacy text array) to search
       final filteredVideos = selectedProfile != null
-          ? _youtubeService.filterVideosByRules(
+          ? await _youtubeService.applyAllRules(
               videos: videos,
-              customRules: selectedProfile.customRules,
+              childProfileId: selectedProfile.id,
+              legacyCustomRules: selectedProfile.customRules,
             )
           : videos;
 

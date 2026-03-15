@@ -21,7 +21,7 @@
 
 **Providers:**
 - `lib/providers/auth_provider.dart` - Auth state management
-- `lib/providers/profile_provider.dart` - Profile state management
+- `lib/providers/profile_provider.dart`  - Profile state management
 
 **Screens:**
 - `lib/screens/profile_selection_screen.dart` - Netflix-style profile picker

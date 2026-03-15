@@ -9,9 +9,9 @@ class AIParserService {
 
   // Google Gemini API (cloud, free tier: 15 requests/minute, 1500/day)
   // Get your free API key at: https://aistudio.google.com/app/apikey
-  static const String geminiApiKey = 'AIzaSyBbrYOYrYj3XBoKULQUcpQ-OofaeDzvgag';
+  static const String geminiApiKey = 'AIzaSyDdObLdg38vcB04U-qkoU1BQLBvg_UVYis';
   static const String geminiUrl =
-      'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent';
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
 
   final bool _useGemini;
 
