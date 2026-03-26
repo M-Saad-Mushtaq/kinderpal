@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
+import '../services/api_service.dart';
 import '../services/youtube_auth_service.dart';
 import '../widgets/custom_button.dart';
 import '../models/youtube_video.dart';
+import 'history_analysis_result_screen.dart';
 import 'video_player_screen.dart';
 
 class YouTubeHistoryScreen extends StatefulWidget {
@@ -15,6 +17,7 @@ class YouTubeHistoryScreen extends StatefulWidget {
 
 class _YouTubeHistoryScreenState extends State<YouTubeHistoryScreen> {
   final YouTubeAuthService _authService = YouTubeAuthService();
+  final ApiService _apiService = ApiService();
   bool _isSignedIn = false;
   bool _isLoading = false;
   List<Map<String, dynamic>> _watchHistory = [];
@@ -126,6 +129,58 @@ class _YouTubeHistoryScreenState extends State<YouTubeHistoryScreen> {
       _watchHistory = [];
       _channelInfo = null;
     });
+  }
+
+  Future<void> _analyzeHistory() async {
+    if (_watchHistory.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No watch history to analyze'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final videoUrls = _watchHistory
+          .map((item) => 'https://www.youtube.com/watch?v=${item['videoId'] ?? ''}')
+          .where((url) => !url.endsWith('v='))
+          .toList();
+
+      final result = await _apiService.analyzeHistoryCategories(videoUrls);
+
+      if (!mounted) {
+        return;
+      }
+      Navigator.pop(context);
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => HistoryAnalysisResultScreen(result: result),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to analyze history: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   String _formatDateTime(DateTime dateTime) {
@@ -372,6 +427,12 @@ class _YouTubeHistoryScreenState extends State<YouTubeHistoryScreen> {
                   return _buildHistoryItem(item);
                 },
               ),
+            const SizedBox(height: 20),
+            CustomButton(
+              text: 'Analyze Watch History',
+              icon: Icons.analytics_outlined,
+              onPressed: _watchHistory.isEmpty ? null : _analyzeHistory,
+            ),
           ],
         ),
       ),

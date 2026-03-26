@@ -9,6 +9,7 @@ class YouTubeVideo {
   final String duration;
   final int? viewCount;
   final int? likeCount;
+  final String? modelCategory;
 
   YouTubeVideo({
     required this.id,
@@ -21,6 +22,7 @@ class YouTubeVideo {
     this.duration = '0:00',
     this.viewCount,
     this.likeCount,
+    this.modelCategory,
   });
 
   factory YouTubeVideo.fromJson(Map<String, dynamic> json) {
@@ -58,6 +60,7 @@ class YouTubeVideo {
       duration: json['contentDetails']?['duration'] ?? '0:00',
       viewCount: int.tryParse(json['statistics']?['viewCount'] ?? '0'),
       likeCount: int.tryParse(json['statistics']?['likeCount'] ?? '0'),
+      modelCategory: json['modelCategory']?.toString(),
     );
   }
 
@@ -73,7 +76,36 @@ class YouTubeVideo {
       'duration': duration,
       'viewCount': viewCount,
       'likeCount': likeCount,
+      'modelCategory': modelCategory,
     };
+  }
+
+  YouTubeVideo copyWith({
+    String? id,
+    String? title,
+    String? description,
+    String? thumbnailUrl,
+    String? channelTitle,
+    String? channelId,
+    DateTime? publishedAt,
+    String? duration,
+    int? viewCount,
+    int? likeCount,
+    String? modelCategory,
+  }) {
+    return YouTubeVideo(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      channelTitle: channelTitle ?? this.channelTitle,
+      channelId: channelId ?? this.channelId,
+      publishedAt: publishedAt ?? this.publishedAt,
+      duration: duration ?? this.duration,
+      viewCount: viewCount ?? this.viewCount,
+      likeCount: likeCount ?? this.likeCount,
+      modelCategory: modelCategory ?? this.modelCategory,
+    );
   }
 
   // Convert ISO 8601 duration to readable format

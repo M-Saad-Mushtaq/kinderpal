@@ -1,17 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../config/env_config.dart';
 
 /// AI service for parsing custom rules
 /// Supports both local Ollama and cloud Google Gemini API
 class AIParserService {
   // Ollama configuration (local, free, runs on your machine)
-  static const String ollamaUrl = 'http://localhost:11434/api/chat';
+  static const String ollamaUrl = EnvConfig.ollamaUrl;
 
   // Google Gemini API (cloud, free tier: 15 requests/minute, 1500/day)
   // Get your free API key at: https://aistudio.google.com/app/apikey
-  static const String geminiApiKey = 'AIzaSyDdObLdg38vcB04U-qkoU1BQLBvg_UVYis';
-  static const String geminiUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
+  static const String geminiApiKey = EnvConfig.geminiApiKey;
+  static const String geminiUrl = EnvConfig.geminiUrl;
 
   final bool _useGemini;
 
@@ -71,7 +72,7 @@ class AIParserService {
   Future<Map<String, dynamic>> _parseWithGemini(String ruleInput) async {
     if (geminiApiKey.isEmpty) {
       throw Exception(
-        'Gemini API key not configured. Add your free key in ai_parser_service.dart',
+        'Gemini API key not configured. Set GEMINI_API_KEY via --dart-define.',
       );
     }
 
@@ -150,6 +151,85 @@ Extract the rule components and return JSON.''',
     }
   }
 
+  Future<TranscriptReviewResult> reviewTranscriptForAge({
+    required String transcript,
+    required int childAge,
+    required String videoTitle,
+    required String videoUrl,
+  }) async {
+    if (geminiApiKey.isEmpty) {
+      throw Exception('Gemini API key not configured. Set GEMINI_API_KEY via --dart-define.');
+    }
+
+    final trimmedTranscript = transcript.trim();
+    if (trimmedTranscript.isEmpty) {
+      return TranscriptReviewResult.empty();
+    }
+
+    final prompt = '''
+You are a child safety reviewer for YouTube videos.
+Assess if the transcript is inappropriate for a child age $childAge.
+
+Video title: "$videoTitle"
+Video URL: $videoUrl
+
+Transcript:
+"""
+$trimmedTranscript
+"""
+
+Return ONLY valid JSON with this schema:
+{
+  "is_inappropriate": true/false,
+  "confidence": number between 0 and 1,
+  "reason": "short explanation"
+}
+''';
+
+    final response = await http
+        .post(
+          Uri.parse('$geminiUrl?key=$geminiApiKey'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'contents': [
+              {
+                'parts': [
+                  {'text': prompt},
+                ],
+              },
+            ],
+            'generationConfig': {
+              'temperature': 0.1,
+              'maxOutputTokens': 700,
+            },
+          }),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (response.statusCode != 200) {
+      throw Exception('Gemini review failed (${response.statusCode})');
+    }
+
+    final result = jsonDecode(response.body);
+    final text =
+        result['candidates']?[0]?['content']?['parts']?[0]?['text']?.toString() ??
+        '{}';
+
+    String jsonText = text.trim();
+    if (jsonText.startsWith('```json')) {
+      jsonText = jsonText.substring(7);
+    }
+    if (jsonText.startsWith('```')) {
+      jsonText = jsonText.substring(3);
+    }
+    if (jsonText.endsWith('```')) {
+      jsonText = jsonText.substring(0, jsonText.length - 3);
+    }
+
+    final parsed = jsonDecode(jsonText.trim());
+    return TranscriptReviewResult.fromJson(parsed);
+  }
+
   /// Test if the selected AI service is accessible
   Future<bool> testConnection() async {
     if (_useGemini) {
@@ -178,37 +258,35 @@ Extract the rule components and return JSON.''',
       return false;
     }
 
-    print('Testing Gemini API with key: ${geminiApiKey.substring(0, 10)}...');
+    final preview = geminiApiKey.length > 10
+      ? geminiApiKey.substring(0, 10)
+      : geminiApiKey;
+    print('Testing Gemini API with key: $preview...');
 
     try {
-      final response = await http
-          .post(
-            Uri.parse('$geminiUrl?key=$geminiApiKey'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'contents': [
-                {
-                  'parts': [
-                    {'text': 'Test'},
-                  ],
-                },
-              ],
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
+      final modelsUrl = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models?key=$geminiApiKey',
+      );
 
-      print('Gemini response: ${response.statusCode}');
+      final response = await http
+          .get(modelsUrl)
+          .timeout(const Duration(seconds: 8));
+
+      print('Gemini health response: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         print('✅ Gemini API connected successfully!');
         return true;
-      } else if (response.statusCode == 503) {
-        print('⚠️ Gemini model temporarily overloaded, but API is working!');
-        return true; // API is configured correctly, just busy
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        print('❌ Gemini API key rejected (${response.statusCode})');
+        return false;
       } else {
-        print('❌ Gemini API error: ${response.statusCode}');
+        print('❌ Gemini API error: ${response.statusCode} - ${response.body}');
         return false;
       }
+    } on TimeoutException {
+      print('⚠️ Gemini connection timed out while checking /models endpoint');
+      return false;
     } catch (e) {
       print('❌ Gemini connection test failed: $e');
       return false;
@@ -297,5 +375,42 @@ Be strict about channel names and categories.''';
       },
       'required': ['rule_type'],
     };
+  }
+}
+
+class TranscriptReviewResult {
+  final bool isInappropriate;
+  final double confidence;
+  final String reason;
+
+  const TranscriptReviewResult({
+    required this.isInappropriate,
+    required this.confidence,
+    required this.reason,
+  });
+
+  factory TranscriptReviewResult.fromJson(dynamic json) {
+    if (json is! Map<String, dynamic>) {
+      return TranscriptReviewResult.empty();
+    }
+
+    final rawConfidence = json['confidence'];
+    final confidence = rawConfidence is num
+        ? rawConfidence.toDouble()
+        : double.tryParse(rawConfidence?.toString() ?? '') ?? 0.0;
+
+    return TranscriptReviewResult(
+      isInappropriate: json['is_inappropriate'] == true,
+      confidence: confidence.clamp(0.0, 1.0),
+      reason: json['reason']?.toString() ?? '',
+    );
+  }
+
+  factory TranscriptReviewResult.empty() {
+    return const TranscriptReviewResult(
+      isInappropriate: false,
+      confidence: 0.0,
+      reason: '',
+    );
   }
 }

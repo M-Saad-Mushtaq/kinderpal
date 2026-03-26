@@ -87,9 +87,9 @@ class CustomRulesService {
         .toList();
 
     return RuleFilterData(
-      blockedChannels: blockedChannels,
-      blockedCategories: blockedCategories,
-      allowedCategories: allowedCategories,
+      blockedChannels: (blockedChannels as Set).cast<String>(),
+      blockedCategories: (blockedCategories as Set).cast<String>(),
+      allowedCategories: (allowedCategories as Set).cast<String>(),
       timeConstraints: timeConstraints,
     );
   }

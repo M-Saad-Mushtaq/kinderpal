@@ -5,8 +5,12 @@ import '../constants/app_text_styles.dart';
 import '../widgets/custom_button.dart';
 import '../providers/profile_provider.dart';
 import '../services/viewing_history_service.dart';
+import '../services/api_service.dart';
+import '../services/flagged_inappropriate_service.dart';
 import '../models/youtube_video.dart';
 import 'video_player_screen.dart';
+import 'ecochamber_analysis_result_screen.dart';
+import 'flagged_inappropriate_list_screen.dart';
 
 class GuardianDashboardScreen extends StatefulWidget {
   const GuardianDashboardScreen({super.key});
@@ -18,9 +22,13 @@ class GuardianDashboardScreen extends StatefulWidget {
 
 class _GuardianDashboardScreenState extends State<GuardianDashboardScreen> {
   final ViewingHistoryService _historyService = ViewingHistoryService();
+  final ApiService _apiService = ApiService();
+  final FlaggedInappropriateService _flaggedService =
+      FlaggedInappropriateService();
   bool _isLoading = true;
   String _totalScreenTime = '0min';
   List<Map<String, dynamic>> _watchHistory = [];
+  int _flaggedInappropriateCount = 0;
 
   @override
   void initState() {
@@ -68,9 +76,14 @@ class _GuardianDashboardScreenState extends State<GuardianDashboardScreen> {
           limit: 10,
         );
 
+        final flaggedCount = await _flaggedService.getFlaggedVideosCount(
+          selectedProfile.id,
+        );
+
         setState(() {
           _totalScreenTime = timeStr;
           _watchHistory = history;
+          _flaggedInappropriateCount = flaggedCount;
           _isLoading = false;
         });
       } catch (e) {
@@ -124,6 +137,72 @@ class _GuardianDashboardScreenState extends State<GuardianDashboardScreen> {
       return '${minutes}m ${secs}s';
     } else {
       return '${secs}s';
+    }
+  }
+
+  Future<void> _analyzeEcochamberFromHistory() async {
+    if (_watchHistory.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No watch history available for analysis.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final urls = _watchHistory
+        .map((item) => item['video_id']?.toString().trim() ?? '')
+        .where((id) => id.isNotEmpty)
+        .map((id) => 'https://www.youtube.com/watch?v=$id')
+        .toSet()
+        .toList();
+
+    if (urls.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No valid video URLs found in history.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final result = await _apiService.analyzeEcoChamberHistory(urls);
+
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.pop(context);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => EcochamberAnalysisResultScreen(result: result),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to analyze ecochamber: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -270,6 +349,156 @@ class _GuardianDashboardScreenState extends State<GuardianDashboardScreen> {
                                     },
                               useGradient: false,
                               backgroundColor: AppColors.primary,
+                              textColor: AppColors.white,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              AppColors.red.withOpacity(0.12),
+                              AppColors.white,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppColors.red.withOpacity(0.3),
+                            width: 2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.report_gmailerrorred,
+                                  color: AppColors.red,
+                                  size: 28,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Flagged Inappropriate',
+                                    style: AppTextStyles.heading3.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _flaggedInappropriateCount == 0
+                                  ? 'No flagged videos yet'
+                                  : '$_flaggedInappropriateCount videos flagged by model',
+                              style: AppTextStyles.bodyMedium.copyWith(
+                                color: AppColors.textGray,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            CustomButton(
+                              text: _flaggedInappropriateCount == 0
+                                  ? 'No Flagged Videos'
+                                  : 'View Flagged Videos ($_flaggedInappropriateCount)',
+                              icon: Icons.warning_amber_rounded,
+                              onPressed: _flaggedInappropriateCount == 0
+                                  ? null
+                                  : () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              const FlaggedInappropriateListScreen(),
+                                        ),
+                                      );
+                                    },
+                              useGradient: false,
+                              backgroundColor: AppColors.red,
+                              textColor: AppColors.white,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              AppColors.green.withOpacity(0.12),
+                              AppColors.white,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppColors.green.withOpacity(0.3),
+                            width: 2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.analytics_outlined,
+                                  color: AppColors.green,
+                                  size: 28,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Ecochamber',
+                                    style: AppTextStyles.heading3.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _watchHistory.isEmpty
+                                  ? 'Watch history required to run analysis'
+                                  : 'Analyze the same watch history shown above',
+                              style: AppTextStyles.bodyMedium.copyWith(
+                                color: AppColors.textGray,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            CustomButton(
+                              text: _watchHistory.isEmpty
+                                  ? 'No History'
+                                  : 'Analyze Ecochamber (${_watchHistory.length})',
+                              icon: Icons.bubble_chart,
+                              onPressed: _watchHistory.isEmpty
+                                  ? null
+                                  : _analyzeEcochamberFromHistory,
+                              useGradient: false,
+                              backgroundColor: AppColors.green,
                               textColor: AppColors.white,
                             ),
                           ],

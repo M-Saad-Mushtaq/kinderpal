@@ -1,11 +1,17 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/youtube_video.dart';
+import '../config/env_config.dart';
 import 'custom_rules_service.dart';
+import 'api_service.dart';
+import 'flagged_inappropriate_service.dart';
 
 class YouTubeService {
-  static const String _apiKey = 'AIzaSyCXxSdotaK9WTpWJc9QPnyh77MBcVw6TL4';
+  static const String _apiKey = EnvConfig.youtubeApiKey;
   static const String _baseUrl = 'https://www.googleapis.com/youtube/v3';
+  final ApiService _apiService = ApiService();
+  final FlaggedInappropriateService _flaggedService =
+      FlaggedInappropriateService();
 
   // Search videos with safe search enabled
   Future<List<YouTubeVideo>> searchVideos({
@@ -14,69 +20,219 @@ class YouTubeService {
     String? regionCode = 'US',
   }) async {
     try {
-      final url = Uri.parse('$_baseUrl/search').replace(
-        queryParameters: {
-          'key': _apiKey,
-          'q': query,
-          'part': 'snippet',
-          'type': 'video',
-          'maxResults': maxResults.toString(),
-          'safeSearch': 'strict',
-          'videoEmbeddable': 'true',
-          'regionCode': regionCode ?? 'US',
-          'relevanceLanguage': 'en',
-          'videoCategoryId': '27', // Education category
-        },
+      final normalizedQuery = query.trim();
+      if (normalizedQuery.isEmpty) {
+        return [];
+      }
+
+      if (_apiKey.isEmpty) {
+        throw Exception('YOUTUBE_API_KEY is missing. Set it via --dart-define.');
+      }
+
+      final effectiveRegion = regionCode ?? 'US';
+      final strategies = _buildSearchStrategies(
+        query: normalizedQuery,
+        maxResults: maxResults,
       );
 
-      final response = await http.get(url);
+      print('🔍 Searching YouTube for "$normalizedQuery" with ${strategies.length} strategies');
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final items = data['items'] as List;
+      final futures = strategies
+          .map(
+            (strategy) => _searchVideoIds(
+              query: strategy.query,
+              maxResults: strategy.maxResults,
+              regionCode: effectiveRegion,
+              order: strategy.order,
+              videoCategoryId: strategy.videoCategoryId,
+            ),
+          )
+          .toList();
 
-        // Get video IDs
-        final videoIds = items
-            .map((item) {
-              if (item['id'] is String) {
-                return item['id'] as String;
-              } else if (item['id'] is Map) {
-                return item['id']['videoId'] as String;
-              }
-              return '';
-            })
-            .where((id) => id.isNotEmpty)
-            .toList();
+      final batches = await Future.wait(futures);
 
-        // Fetch full details including duration
-        if (videoIds.isNotEmpty) {
-          final detailsUrl = Uri.parse('$_baseUrl/videos').replace(
-            queryParameters: {
-              'key': _apiKey,
-              'id': videoIds.join(','),
-              'part': 'snippet,contentDetails,statistics',
-            },
-          );
-
-          final detailsResponse = await http.get(detailsUrl);
-
-          if (detailsResponse.statusCode == 200) {
-            final detailsData = json.decode(detailsResponse.body);
-            final detailsItems = detailsData['items'] as List;
-
-            return detailsItems
-                .map((item) => YouTubeVideo.fromJson(item))
-                .toList();
+      final mergedIds = <String>[];
+      final seen = <String>{};
+      for (final batch in batches) {
+        for (final id in batch) {
+          if (seen.add(id)) {
+            mergedIds.add(id);
           }
         }
-
-        return items.map((item) => YouTubeVideo.fromJson(item)).toList();
-      } else {
-        throw Exception('Failed to load videos: ${response.statusCode}');
       }
+
+      if (mergedIds.isEmpty) {
+        return [];
+      }
+
+      final detailsIds = mergedIds.take(50).toList();
+      final detailedVideos = await _fetchVideoDetails(detailsIds);
+
+      if (detailedVideos.isEmpty) {
+        return [];
+      }
+
+      final diversified = _diversifyByChannel(
+        detailedVideos,
+        targetCount: maxResults,
+      );
+
+      return diversified;
     } catch (e) {
       throw Exception('Error searching videos: $e');
     }
+  }
+
+  List<_SearchStrategy> _buildSearchStrategies({
+    required String query,
+    required int maxResults,
+  }) {
+    final lower = query.toLowerCase();
+    final hasKidsIntent =
+        lower.contains('kid') ||
+        lower.contains('child') ||
+        lower.contains('children') ||
+        lower.contains('toddler');
+
+    final strategyCount = maxResults <= 8 ? 2 : 3;
+    final perStrategy = ((maxResults / strategyCount).ceil() + 3).clamp(5, 12);
+
+    final strategies = <_SearchStrategy>[
+      _SearchStrategy(
+        query: query,
+        order: 'relevance',
+        videoCategoryId: '27',
+        maxResults: perStrategy,
+      ),
+      _SearchStrategy(
+        query: hasKidsIntent ? query : '$query for kids',
+        order: 'viewCount',
+        maxResults: perStrategy,
+      ),
+    ];
+
+    if (strategyCount == 3) {
+      strategies.add(
+        _SearchStrategy(
+          query: hasKidsIntent ? '$query learning' : '$query educational',
+          order: 'date',
+          maxResults: perStrategy,
+        ),
+      );
+    }
+
+    return strategies;
+  }
+
+  Future<List<String>> _searchVideoIds({
+    required String query,
+    required int maxResults,
+    required String regionCode,
+    required String order,
+    String? videoCategoryId,
+  }) async {
+    final params = <String, String>{
+      'key': _apiKey,
+      'q': query,
+      'part': 'snippet',
+      'type': 'video',
+      'maxResults': maxResults.toString(),
+      'safeSearch': 'strict',
+      'videoEmbeddable': 'true',
+      'regionCode': regionCode,
+      'relevanceLanguage': 'en',
+      'order': order,
+    };
+
+    if (videoCategoryId != null && videoCategoryId.isNotEmpty) {
+      params['videoCategoryId'] = videoCategoryId;
+    }
+
+    final url = Uri.parse('$_baseUrl/search').replace(queryParameters: params);
+    final response = await http.get(url);
+    if (response.statusCode != 200) {
+      return [];
+    }
+
+    final data = json.decode(response.body);
+    final items = data['items'] as List? ?? [];
+
+    return items
+        .map((item) {
+          if (item['id'] is String) {
+            return item['id'] as String;
+          }
+          if (item['id'] is Map) {
+            return item['id']['videoId']?.toString() ?? '';
+          }
+          return '';
+        })
+        .where((id) => id.isNotEmpty)
+        .toList();
+  }
+
+  Future<List<YouTubeVideo>> _fetchVideoDetails(List<String> videoIds) async {
+    if (videoIds.isEmpty) {
+      return [];
+    }
+
+    final detailsUrl = Uri.parse('$_baseUrl/videos').replace(
+      queryParameters: {
+        'key': _apiKey,
+        'id': videoIds.join(','),
+        'part': 'snippet,contentDetails,statistics',
+      },
+    );
+
+    final detailsResponse = await http.get(detailsUrl);
+    if (detailsResponse.statusCode != 200) {
+      return [];
+    }
+
+    final detailsData = json.decode(detailsResponse.body);
+    final detailsItems = detailsData['items'] as List? ?? [];
+
+    return detailsItems.map((item) => YouTubeVideo.fromJson(item)).toList();
+  }
+
+  List<YouTubeVideo> _diversifyByChannel(
+    List<YouTubeVideo> videos, {
+    required int targetCount,
+  }) {
+    if (videos.isEmpty) {
+      return videos;
+    }
+
+    final buckets = <String, List<YouTubeVideo>>{};
+    for (final video in videos) {
+      final channelKey =
+          video.channelId.trim().isNotEmpty
+              ? video.channelId.trim()
+              : video.channelTitle.trim().toLowerCase();
+      buckets.putIfAbsent(channelKey, () => []).add(video);
+    }
+
+    final result = <YouTubeVideo>[];
+    final keys = buckets.keys.toList();
+
+    while (result.length < targetCount) {
+      var addedInRound = false;
+      for (final key in keys) {
+        final queue = buckets[key];
+        if (queue != null && queue.isNotEmpty) {
+          result.add(queue.removeAt(0));
+          addedInRound = true;
+          if (result.length >= targetCount) {
+            break;
+          }
+        }
+      }
+      if (!addedInRound) {
+        break;
+      }
+    }
+
+    return result;
   }
 
   // Get videos by preference category
@@ -131,13 +287,20 @@ class YouTubeService {
       List<YouTubeVideo> allVideos = [];
 
       // Get videos for each preference
-      for (String preference in preferences) {
-        final videos = await getVideosByPreference(
-          preference: preference,
-          maxResults: 5,
-          childAge: childAge,
-        );
-        allVideos.addAll(videos);
+      if (preferences.isNotEmpty) {
+        final preferenceFutures = preferences
+            .map(
+              (preference) => getVideosByPreference(
+                preference: preference,
+                maxResults: 5,
+                childAge: childAge,
+              ),
+            )
+            .toList();
+        final preferenceResults = await Future.wait(preferenceFutures);
+        for (final videos in preferenceResults) {
+          allVideos.addAll(videos);
+        }
       }
 
       // If no preferences, get general kid-friendly content
@@ -165,10 +328,78 @@ class YouTubeService {
         );
       }
 
-      return filteredVideos..shuffle();
+      final classifiedVideos = await classifyVideos(
+        filteredVideos,
+        childProfileId: childProfileId,
+        childAge: childAge,
+      );
+      return classifiedVideos..shuffle();
     } catch (e) {
       throw Exception('Error loading home feed: $e');
     }
+  }
+
+  Future<List<YouTubeVideo>> classifyVideos(
+    List<YouTubeVideo> videos, {
+    String? childProfileId,
+    int? childAge,
+  }) async {
+    if (videos.isEmpty) {
+      print('🏷️ [classifyVideos] No videos to classify');
+      return videos;
+    }
+
+    final isApiUp = await _apiService.isApiRunning();
+    if (!isApiUp) {
+      print('🏷️ [classifyVideos] Skipping classification because /running is not 200');
+      return videos;
+    }
+
+    print('🏷️ [classifyVideos] Starting classification for ${videos.length} videos');
+    final enrichedVideos = <YouTubeVideo>[];
+    int filteredFlaggedCount = 0;
+    for (final video in videos) {
+      final videoUrl = 'https://www.youtube.com/watch?v=${video.id}';
+      final category = await _apiService.classifyVideo(videoUrl);
+      if (category != null && category.isNotEmpty) {
+        if (category.trim().toLowerCase() == 'flagged_inappropriate') {
+          filteredFlaggedCount += 1;
+          print('🚫 [classifyVideos] ${video.id} flagged_inappropriate, removing from feed');
+
+          if (childProfileId != null && childAge != null) {
+            try {
+              await _flaggedService.processAndSaveFlaggedVideo(
+                childProfileId: childProfileId,
+                childAge: childAge,
+                video: video,
+                modelLabel: category,
+              );
+            } catch (e) {
+              print('⚠️ [classifyVideos] Failed to save flagged video ${video.id}: $e');
+            }
+          }
+          continue;
+        }
+
+        print('🏷️ [classifyVideos] ${video.id} -> "$category"');
+        enrichedVideos.add(video.copyWith(modelCategory: category));
+      } else {
+        print('🏷️ [classifyVideos] ${video.id} -> no category');
+        enrichedVideos.add(video);
+      }
+    }
+
+    final taggedCount =
+        enrichedVideos
+            .where(
+              (v) => v.modelCategory != null && v.modelCategory!.trim().isNotEmpty,
+            )
+            .length;
+    print(
+      '🏷️ [classifyVideos] Completed. tagged=$taggedCount / total=${enrichedVideos.length}, filtered_flagged=$filteredFlaggedCount',
+    );
+
+    return enrichedVideos;
   }
 
   /// Apply all active parental rules to a video list:
@@ -314,5 +545,19 @@ class YouTubeService {
     }
   }
 
+}
+
+class _SearchStrategy {
+  final String query;
+  final String order;
+  final String? videoCategoryId;
+  final int maxResults;
+
+  const _SearchStrategy({
+    required this.query,
+    required this.order,
+    this.videoCategoryId,
+    required this.maxResults,
+  });
 }
 

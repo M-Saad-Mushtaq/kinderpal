@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../config/env_config.dart';
 
 class OllamaService {
   // Update this URL to match your Ollama server
   // For local development: 'http://localhost:11434/api/chat'
   // For network: 'http://YOUR_IP:11434/api/chat'
-  static const String ollamaUrl = 'http://localhost:11434/api/chat';
+  static const String ollamaUrl = EnvConfig.ollamaUrl;
 
   /// Parse natural language rule input into structured format
   Future<Map<String, dynamic>> parseRule(String ruleInput) async {

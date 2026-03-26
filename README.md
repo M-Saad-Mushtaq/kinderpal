@@ -73,6 +73,42 @@ flutter pub get
 flutter run
 ```
 
+### Environment Configuration (Required) 🔐
+
+Sensitive keys are read from `--dart-define` values.
+
+Required defines:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `YOUTUBE_API_KEY`
+- `GEMINI_API_KEY` (only if using Gemini parser)
+- `API_BASE_URL` (example: `http://10.0.2.2:5000` on Android emulator)
+
+Optional defines:
+
+- `OLLAMA_URL` (default: `http://localhost:11434/api/chat`)
+- `GEMINI_URL` (defaults to Gemini generateContent endpoint)
+
+Example:
+
+```bash
+flutter run \
+  --dart-define=SUPABASE_URL=https://your-project.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=your_anon_key \
+  --dart-define=YOUTUBE_API_KEY=your_youtube_api_key \
+  --dart-define=GEMINI_API_KEY=your_gemini_api_key \
+  --dart-define=API_BASE_URL=http://10.0.2.2:5000
+```
+
+Or use a JSON file (recommended):
+
+```bash
+cp env.example.json env.json
+# fill env.json with real values
+flutter run --dart-define-from-file=env.json
+```
+
 ## Color Palette 🎨
 
 - **Primary**: Purple (#8B7FFF)

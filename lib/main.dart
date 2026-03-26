@@ -20,6 +20,7 @@ import 'screens/youtube_api_setup_screen.dart';
 import 'screens/playlist_prompt_screen.dart';
 import 'screens/generated_playlist_screen.dart';
 import 'screens/profile_selection_screen.dart';
+import 'screens/flagged_inappropriate_list_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,6 +72,8 @@ class MyApp extends StatelessWidget {
           '/youtube-history': (context) => const YouTubeHistoryScreen(),
           '/playlist-prompt': (context) => const PlaylistPromptScreen(),
           '/generated-playlist': (context) => const GeneratedPlaylistScreen(),
+          '/flagged-inappropriate': (context) =>
+              const FlaggedInappropriateListScreen(),
         },
       ),
     );

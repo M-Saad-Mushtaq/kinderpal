@@ -104,15 +104,33 @@ class _PlaylistPromptScreenState extends State<PlaylistPromptScreen> {
             )
           : videos;
 
+      final classifiedVideos = await _youtubeService.classifyVideos(
+        filteredVideos,
+        childProfileId: selectedProfile?.id,
+        childAge: selectedProfile?.age,
+      );
+
+      final taggedCount =
+          classifiedVideos
+              .where(
+                (v) =>
+                    v.modelCategory != null &&
+                    v.modelCategory!.trim().isNotEmpty,
+              )
+              .length;
+      print(
+        '🧾 [PlaylistPrompt] classified=${classifiedVideos.length}, tagged=$taggedCount',
+      );
+
       if (!mounted) return;
 
       // Save playlist to database
-      if (selectedProfile != null && filteredVideos.isNotEmpty) {
+      if (selectedProfile != null && classifiedVideos.isNotEmpty) {
         try {
           await _playlistService.savePlaylist(
             childProfileId: selectedProfile.id,
             name: prompt,
-            videoIds: filteredVideos.map((v) => v.id).toList(),
+            videoIds: classifiedVideos.map((v) => v.id).toList(),
           );
           await _loadSavedPlaylists();
         } catch (_) {
@@ -129,7 +147,7 @@ class _PlaylistPromptScreenState extends State<PlaylistPromptScreen> {
       Navigator.pushNamed(
         context,
         '/generated-playlist',
-        arguments: {'videos': filteredVideos, 'playlistName': prompt},
+        arguments: {'videos': classifiedVideos, 'playlistName': prompt},
       );
     } catch (e) {
       if (!mounted) return;

@@ -61,6 +61,18 @@ class _HomeScreenState extends State<HomeScreen>
           customRules: selectedProfile.customRules, // legacy text-rule sync
         );
 
+        final taggedCount =
+            videos
+                .where(
+                  (v) =>
+                      v.modelCategory != null &&
+                      v.modelCategory!.trim().isNotEmpty,
+                )
+                .length;
+        print(
+          '🏠 [HomeScreen] Loaded videos=${videos.length}, tagged=$taggedCount',
+        );
+
         setState(() {
           _videos = videos; // Videos already filtered by custom rules
           _isLoading = false;
@@ -108,8 +120,26 @@ class _HomeScreenState extends State<HomeScreen>
             )
           : videos;
 
+      final classifiedVideos = await _youtubeService.classifyVideos(
+        filteredVideos,
+        childProfileId: selectedProfile?.id,
+        childAge: selectedProfile?.age,
+      );
+
+      final taggedCount =
+          classifiedVideos
+              .where(
+                (v) =>
+                    v.modelCategory != null &&
+                    v.modelCategory!.trim().isNotEmpty,
+              )
+              .length;
+      print(
+        '🔎 [HomeScreen search] classified=${classifiedVideos.length}, tagged=$taggedCount',
+      );
+
       setState(() {
-        _videos = filteredVideos;
+        _videos = classifiedVideos;
         _isLoading = false;
       });
     } catch (e) {
@@ -326,6 +356,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildVideoCard(YouTubeVideo video) {
+    final tagLabel =
+        (video.modelCategory != null && video.modelCategory!.trim().isNotEmpty)
+        ? video.modelCategory!.trim()
+        : 'temp';
+
     return GestureDetector(
       onTap: () async {
         await Navigator.push(
@@ -375,6 +410,27 @@ class _HomeScreenState extends State<HomeScreen>
                       height: 120,
                       color: AppColors.veryLightBlue,
                       child: Icon(Icons.error, color: AppColors.textGray),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _categoryColor(tagLabel),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        tagLabel,
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: AppColors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ),
                   // Duration badge
@@ -435,5 +491,53 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
+  }
+
+  Color _categoryColor(String category) {
+    final normalized = category.trim().toLowerCase();
+
+    switch (normalized) {
+      case 'temp':
+        return AppColors.textGray;
+      case 'education':
+        return AppColors.primary;
+      case 'music':
+        return AppColors.cyan;
+      case 'sports':
+        return AppColors.green;
+      case 'entertainment':
+        return AppColors.pink;
+      case 'science':
+        return AppColors.blue;
+      case 'news':
+        return AppColors.peach;
+      case 'politics':
+        return AppColors.red;
+      case 'vlogging':
+      case 'general/other':
+        return AppColors.lightPurple;
+      case 'gaming':
+        return AppColors.yellow;
+      case 'technology':
+      case 'tech':
+        return AppColors.cyan;
+      default:
+        final palette = <Color>[
+          AppColors.primary,
+          AppColors.cyan,
+          AppColors.green,
+          AppColors.pink,
+          AppColors.blue,
+          AppColors.peach,
+          AppColors.red,
+          AppColors.lightPurple,
+          AppColors.yellow,
+        ];
+        final hash = normalized.codeUnits.fold<int>(
+          0,
+          (sum, unit) => sum + unit,
+        );
+        return palette[hash % palette.length];
+    }
   }
 }

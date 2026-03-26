@@ -39,7 +39,7 @@ class _CustomRulesScreenState extends State<CustomRulesScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text(
-              '⚠️ AI parsing disabled. Rules will save as basic text.\nCheck your Gemini API key in ai_parser_service.dart',
+              '⚠️ AI parsing disabled. Rules will save as basic text.\nSet GEMINI_API_KEY via --dart-define.',
             ),
             duration: const Duration(seconds: 4),
             backgroundColor: Colors.orange,
@@ -155,7 +155,7 @@ class _CustomRulesScreenState extends State<CustomRulesScreen> {
     } catch (e) {
       if (mounted) {
         final errorMsg = e.toString().contains('API key')
-            ? 'Check your Gemini API key in ai_parser_service.dart'
+          ? 'Check GEMINI_API_KEY passed via --dart-define'
             : e.toString().contains('Rate limit')
             ? 'Too many requests. Wait a minute or disable AI parsing.'
             : 'Error: ${e.toString().replaceAll('Exception: ', '')}';
